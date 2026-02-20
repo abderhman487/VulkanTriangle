@@ -25,11 +25,25 @@ const bool enableValidationLayers = false;
 const bool enableValidationLayers = true;
 #endif
 
+typedef struct QueueFamilyIndices{
+    u32 graphicsFamily;
+    u32 presentFamily;
+    bool isGraphicsFamilySet;
+    bool isPresentFamilySet;
+} QueueFamilyIndices;
+
 typedef struct App {
     GLFWwindow *window;
     VkInstance instance;
     VkDebugUtilsMessengerEXT debugMessenger;
+    VkSurfaceKHR surface;
+    VkPhysicalDevice physicalDevice;
+    QueueFamilyIndices queueFamilyIndices;
+    VkDevice device; //Logical Device
+    VkQueue graphicsQueue;
+    VkQueue presentQueue;
 } App;
+
 
 void initWindow(App *pApp);
 void initVulkan(App *pApp);
@@ -59,6 +73,17 @@ void DestroyDebugUtilsMessengerEXT(VkInstance instance,
     VkDebugUtilsMessengerEXT debugMessenger, 
     const VkAllocationCallbacks *pAllocator);
 
+void pickPhysicalDevice(App *pApp);
+
+u32 rateDeviceSuitability(VkPhysicalDevice device, VkSurfaceKHR surface);
+
+QueueFamilyIndices findQueueFamilies(VkPhysicalDevice device, VkSurfaceKHR surface);
+
+void createLogicalDevice(App *pApp);
+
+void createSurface(App *pApp);
+
+//===================================================================
 int main(void){
     App window = {0};
 
@@ -83,7 +108,9 @@ void initWindow(App *pApp){
 void initVulkan(App *pApp){
     createInstance(pApp);
     setupDebugMessenger(pApp);
-
+    createSurface(pApp);
+    pickPhysicalDevice(pApp);
+    createLogicalDevice(pApp);
 }
 
 void mainloop(App *pApp){
@@ -96,6 +123,10 @@ void cleanup(App *pApp){
     if(enableValidationLayers){
         DestroyDebugUtilsMessengerEXT(pApp->instance, pApp->debugMessenger, NULL);
     }
+
+    vkDestroySurfaceKHR(pApp->instance , pApp->surface, NULL);
+
+    vkDestroyDevice(pApp->device, NULL);
 
     vkDestroyInstance(pApp->instance, NULL);
 
@@ -144,7 +175,7 @@ void createInstance(App *pApp){
     }
 
     VkDebugUtilsMessengerCreateInfoEXT debugCreateInfo = {0};
-    
+
     VkInstanceCreateInfo createInfo = {
         .sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,
         .pApplicationInfo = &appInfo,
@@ -290,5 +321,169 @@ void DestroyDebugUtilsMessengerEXT(VkInstance instance,
         
         if (func != NULL) {
             func(instance, debugMessenger, pAllocator);
+        }
+}
+
+void pickPhysicalDevice(App *pApp) {
+    u32 deviceCount = 0;
+    vkEnumeratePhysicalDevices(pApp->instance, &deviceCount, NULL);
+
+    if(deviceCount == 0){
+        printf("failed to find GPUs with Vulkan support!\n");
+        exit(3);
+    }
+
+    VkPhysicalDevice *devices = (VkPhysicalDevice *) malloc(
+        sizeof(VkPhysicalDevice) * deviceCount
+    );
+
+    vkEnumeratePhysicalDevices(pApp->instance, &deviceCount, devices);
+
+    u32 deviceScore = 0;
+    VkPhysicalDevice device = VK_NULL_HANDLE;;
+
+    for(int i = 0; i < deviceCount; i++){
+        u32 score = rateDeviceSuitability(devices[i], pApp->surface);
+        if(score > deviceScore){
+            deviceScore = score;
+            device = devices[i];
+        }
+    }
+    if(device == VK_NULL_HANDLE){
+        printf("failed to find a suitable GPU!\n");
+        exit(3);
+    }
+
+    pApp->physicalDevice = device;
+    printf("GPU selected\n");
+
+    pApp->queueFamilyIndices = findQueueFamilies(device, pApp->surface);
+    free(devices);
+}
+
+u32 rateDeviceSuitability(VkPhysicalDevice device, VkSurfaceKHR surface){
+    VkPhysicalDeviceProperties deviceProperties;
+    vkGetPhysicalDeviceProperties(device, &deviceProperties);
+
+    VkPhysicalDeviceFeatures deviceFeatures;
+    vkGetPhysicalDeviceFeatures(device, &deviceFeatures);
+
+    u32 score = 0;
+
+    // Discrete GPUs have a significant performance advantage
+    if (deviceProperties.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU) {
+        score += 1000;
+    }
+
+    // Maximum possible size of textures affects graphics quality
+    score += deviceProperties.limits.maxImageDimension2D;
+
+    // Application can't function without geometry shaders
+    if (!deviceFeatures.geometryShader) {
+       return 0;
+    }
+
+    QueueFamilyIndices indices = findQueueFamilies(device, surface);
+    if(!indices.isGraphicsFamilySet){
+        printf("Queue family is not supported!\n");
+        return 0;
+    }
+
+    return score;
+}
+
+QueueFamilyIndices findQueueFamilies(VkPhysicalDevice device, VkSurfaceKHR surface){
+    QueueFamilyIndices indices = {0};
+
+    u32 queueFamilyCount = 0;
+    vkGetPhysicalDeviceQueueFamilyProperties(device, &queueFamilyCount, NULL);
+
+    VkQueueFamilyProperties *queueFamilyProperties = malloc(
+        sizeof(VkQueueFamilyProperties) * queueFamilyCount);
+    vkGetPhysicalDeviceQueueFamilyProperties(device, &queueFamilyCount, queueFamilyProperties);
+
+    for(int i = 0; i < queueFamilyCount; i++){
+        if(queueFamilyProperties[i].queueFlags & VK_QUEUE_GRAPHICS_BIT){
+            indices.graphicsFamily = i;
+            indices.isGraphicsFamilySet = true;
+        }
+
+        VkBool32 presentSupport = false;
+        vkGetPhysicalDeviceSurfaceSupportKHR(device, i, surface, &presentSupport);
+        if(presentSupport){
+            indices.presentFamily = i;
+            indices.isPresentFamilySet = true;
+        }
+        if(indices.isGraphicsFamilySet && indices.isPresentFamilySet)
+            break;
+    }
+
+
+    free(queueFamilyProperties);
+    return indices;
+}
+
+void getFamilyDeviceQueues(VkDeviceQueueCreateInfo *queues, QueueFamilyIndices indices, VkPhysicalDeviceFeatures deviceFeatures) {
+  // GraphicsQueue
+  VkDeviceQueueCreateInfo graphicsQueueCreateInfo = {
+    .sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO,
+    .queueFamilyIndex = indices.graphicsFamily,
+    .queueCount = 1
+  };
+
+  float graphicsQueuePriority = 1.0f;
+  graphicsQueueCreateInfo.pQueuePriorities = &graphicsQueuePriority;
+  queues[0] = graphicsQueueCreateInfo;
+
+  // PresentQueue
+  VkDeviceQueueCreateInfo presentQueueCreateInfo = {
+    .sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO,
+    .queueFamilyIndex = indices.presentFamily,
+    .queueCount = 1
+  };
+
+  float presentQueuePriority = 1.0f;
+  graphicsQueueCreateInfo.pQueuePriorities = &presentQueuePriority;
+  queues[1] = presentQueueCreateInfo;
+}
+
+void createLogicalDevice(App *pApp){
+    QueueFamilyIndices indices = findQueueFamilies(pApp->physicalDevice, pApp->surface);
+
+    VkPhysicalDeviceFeatures deviceFeatures;
+    vkGetPhysicalDeviceFeatures(pApp->physicalDevice, &deviceFeatures);
+
+    VkDeviceQueueCreateInfo queues[2];
+    getFamilyDeviceQueues(queues, indices, deviceFeatures);
+
+    VkDeviceCreateInfo createInfo = {
+        .sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO,
+        .pQueueCreateInfos = queues,
+        .queueCreateInfoCount = 1,
+        .pEnabledFeatures = &deviceFeatures,
+        .enabledExtensionCount = 0
+    };
+
+    if(enableValidationLayers){
+        createInfo.enabledLayerCount = validationLayersCount;
+        createInfo.ppEnabledLayerNames = validationLayers;
+    }
+    else{
+        createInfo.enabledLayerCount = 0;
+    }
+
+    if(vkCreateDevice(pApp->physicalDevice, &createInfo, NULL, &pApp->device) != VK_SUCCESS){
+        printf("failed to create logical device!\n");
+        exit(4);
+    }
+
+    vkGetDeviceQueue(pApp->device, pApp->queueFamilyIndices.graphicsFamily,0 , &pApp->graphicsQueue);
+}
+
+void createSurface(App *pApp){
+    if(glfwCreateWindowSurface(pApp->instance, pApp->window, 
+        NULL, &pApp->surface) != VK_SUCCESS){
+            printf("failed to create window sufrace!\n");
+            exit(5);
         }
 }
