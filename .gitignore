@@ -1,4 +1,4 @@
 .vscode
 game
-shaders/vert.spv
-shaders/frag.spv
+# shaders/vert.spv
+# shaders/frag.spv
