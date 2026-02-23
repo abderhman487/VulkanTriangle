@@ -1,0 +1,26 @@
+In this repo I have implemented a triangle using vulkan in C language.
+
+what I've implemented through this journey:
+  1- GLFW Window creation
+  2- Initialize Vulkan
+  3- Instance creation
+  4- Validation layers for debugging
+  5- physical device selection
+  6- Logical device and queue families
+  7- Window surface and swap chain
+  8- Image views and framebuffers
+  9- Render passes
+  10- Graphics pipeline
+  11- Command pools and command buffers
+  12- Main loop
+  13- Cleanup
+
+I used this tutorial as reference https://vulkan-tutorial.com/ But I used C language in implementation not C++.
+
+Tools:
+  1- gcc
+  2- Vulkan SDK
+  3- GLFW
+  4- GLM
+  5- C standard libraries
+  6- glslc to compile shaders

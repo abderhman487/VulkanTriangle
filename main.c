@@ -28,6 +28,14 @@ const bool enableValidationLayers = false;
 const bool enableValidationLayers = true;
 #endif
 
+typedef struct SwapChainSupportDetails {
+    VkSurfaceCapabilitiesKHR capabilities;
+    VkSurfaceFormatKHR *formats;
+    VkPresentModeKHR *presentModes;
+    u32 formatCount;
+    u32 presentModeCount;
+} SwapChainSupportDetails;
+
 typedef struct QueueFamilyIndices{
     u32 graphicsFamily;
     u32 presentFamily;
@@ -45,16 +53,21 @@ typedef struct App {
     VkDevice device; //Logical Device
     VkQueue graphicsQueue;
     VkQueue presentQueue;
+    
     VkSwapchainKHR swapChain;
+    VkImage *swapChainImages;
+    u32 swapChainImageCount;
+    VkFormat swapChainImageFormat;
+    VkExtent2D swapChainExtent;
+
+    VkImageView *swapChainImageViews;
 } App;
 
-typedef struct SwapChainSupportDetails {
-    VkSurfaceCapabilitiesKHR capabilities;
-    VkSurfaceFormatKHR *formats;
-    VkPresentModeKHR *presentModes;
-    u32 formatCount;
-    u32 presentModeCount;
-} SwapChainSupportDetails;
+typedef struct shaderFile{
+    size_t size;
+    char *code;
+} shaderFile;
+
 
 void initWindow(App *pApp);
 void initVulkan(App *pApp);
@@ -104,6 +117,15 @@ VkPresentModeKHR chooseSwapPresentMode(u32 presentModeCount, VkPresentModeKHR *a
 
 void createSwapChain(App *pApp);
 
+void createImageViews(App *pApp);
+
+void createGraphicsPipeline(App *pApp);
+
+static shaderFile readFile(char *filename);
+
+VkShaderModule createShaderModule(shaderFile shaderFile, App *pApp);
+
+
 //===================================================================
 int main(void){
     App window = {0};
@@ -133,6 +155,8 @@ void initVulkan(App *pApp){
     pickPhysicalDevice(pApp);
     createLogicalDevice(pApp);
     createSwapChain(pApp);
+    createImageViews(pApp);
+    createGraphicsPipeline(pApp);
 }
 
 void mainloop(App *pApp){
@@ -142,10 +166,16 @@ void mainloop(App *pApp){
 }
 
 void cleanup(App *pApp){
+
+    for (u32 i = 0; i < pApp->swapChainImageCount; i++) {
+        vkDestroyImageView(pApp->device, pApp->swapChainImageViews[i], NULL);
+    }
+
+    vkDestroySwapchainKHR(pApp->device, pApp->swapChain, NULL);
+
     if(enableValidationLayers){
         DestroyDebugUtilsMessengerEXT(pApp->instance, pApp->debugMessenger, NULL);
     }
-    vkDestroySwapchainKHR(pApp->device, pApp->swapChain, NULL);
 
     vkDestroySurfaceKHR(pApp->instance , pApp->surface, NULL);
 
@@ -551,6 +581,8 @@ bool checkDeviceExtensionSupport(VkPhysicalDevice device){
     return true;
 }
 
+
+// Swap Chain
 SwapChainSupportDetails querySwapChainSupport(VkPhysicalDevice device, VkSurfaceKHR surface){
     SwapChainSupportDetails details = {0};
 
@@ -667,8 +699,119 @@ void createSwapChain(App *pApp){
         createInfo.pQueueFamilyIndices = NULL; // Optional
     }
 
-    if (vkCreateSwapchainKHR(pApp -> device, &createInfo, NULL, &pApp->swapChain) != VK_SUCCESS) {
+    if (vkCreateSwapchainKHR(pApp->device, &createInfo, NULL, &pApp->swapChain) != VK_SUCCESS) {
         printf("failed to create swap chain!");
         exit(6);
     }
+
+    vkGetSwapchainImagesKHR(pApp->device, pApp->swapChain, &imageCount, NULL);
+    pApp->swapChainImages = (VkImage *) malloc(sizeof(VkImage) *imageCount);
+    vkGetSwapchainImagesKHR(pApp->device, pApp->swapChain, &imageCount, pApp->swapChainImages);
+    
+    pApp->swapChainImageFormat = surfaceFormat.format;
+    pApp->swapChainExtent = extent;
+    pApp->swapChainImageCount = imageCount;
+}
+
+
+void createImageViews(App *pApp){
+    pApp->swapChainImageViews = (VkImageView *) malloc(
+        sizeof(VkImageView) * pApp->swapChainImageCount);
+
+    for(u32 i = 0; i < pApp->swapChainImageCount; i++){
+        VkImageViewCreateInfo createInfo = {
+            .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
+            .image = pApp->swapChainImages[i],
+            .viewType = VK_IMAGE_VIEW_TYPE_2D,
+            .format = pApp->swapChainImageFormat,
+            .components.r = VK_COMPONENT_SWIZZLE_IDENTITY,
+            .components.g = VK_COMPONENT_SWIZZLE_IDENTITY,
+            .components.b = VK_COMPONENT_SWIZZLE_IDENTITY,
+            .components.a = VK_COMPONENT_SWIZZLE_IDENTITY,
+            .subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+            .subresourceRange.baseMipLevel = 0,
+            .subresourceRange.levelCount = 1,
+            .subresourceRange.baseArrayLayer = 0,
+            .subresourceRange.layerCount = 1,
+        };
+
+        if(vkCreateImageView(pApp->device, &createInfo, NULL, 
+            &pApp->swapChainImageViews[i]) != VK_SUCCESS){
+                printf("failed to crate image views!\n");
+                exit(7);
+            }
+    }
+}
+
+
+// Graphic Pipelines
+void createGraphicsPipeline(App *pApp) {
+    shaderFile vertShaderFile = readFile("./shaders/vert.spv");
+    shaderFile fragShaderFile = readFile("./shaders/frag.spv");
+
+    VkShaderModule vertShaderModule = createShaderModule(vertShaderFile, pApp);
+    VkShaderModule fragShaderModule = createShaderModule(fragShaderFile, pApp);
+
+    vkDestroyShaderModule(pApp->device, fragShaderModule, NULL);
+    vkDestroyShaderModule(pApp->device, vertShaderModule, NULL);
+
+    VkPipelineShaderStageCreateInfo vertShaderStageInfo = {
+        .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
+        .stage = VK_SHADER_STAGE_VERTEX_BIT,
+        .module = vertShaderModule,
+        .pName = "main",
+    };
+
+    VkPipelineShaderStageCreateInfo fragShaderStageInfo = {
+        .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
+        .stage = VK_SHADER_STAGE_FRAGMENT_BIT,
+        .module = fragShaderModule,
+        .pName = "main",
+    };
+
+    VkPipelineShaderStageCreateInfo shaderStages[] = {vertShaderStageInfo, fragShaderStageInfo};
+}
+
+static shaderFile readFile(char *filename){
+
+    FILE *file;
+    if((file = fopen(filename,"rb")) == NULL){
+        printf("failed to open %s\n", filename);
+        exit(8);
+    }
+
+    fseek(file,0L,SEEK_END);
+    size_t size = ftell(file);
+    fseek(file, 0L, SEEK_SET);
+
+    char *buffer = (char *)malloc(size);
+    if(buffer == NULL){
+        printf("can't allocate buffer to read the shader binary file!\n");
+        exit(8);
+    }
+    fread(buffer, size, sizeof(char), file);
+
+    fclose(file);
+
+    shaderFile shaderFile = {
+        .code = buffer,
+        .size = size
+    };
+    return shaderFile;
+}
+
+VkShaderModule createShaderModule(shaderFile shaderFile, App *pApp) {
+    VkShaderModuleCreateInfo createInfo = {
+        .sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
+        .codeSize = shaderFile.size,
+        .pCode = (u32 *) shaderFile.code,
+    };
+
+    VkShaderModule shaderModule;
+    if (vkCreateShaderModule(pApp->device, &createInfo, NULL, &shaderModule) != VK_SUCCESS) {
+        printf("failed to create shader module!\n");
+        exit(8);
+    }
+
+    return shaderModule;
 }
