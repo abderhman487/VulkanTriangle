@@ -4,7 +4,7 @@ CFLAGS = -std=c17 -g -O2
 
 LDFLAGS = -lglfw -lvulkan -ldl -lpthread -lX11 -lXxf86vm -lXrandr -lXi
 
-SRC = main.c
+SRC = vulkan.c
 
 TARGET = vulkan
 

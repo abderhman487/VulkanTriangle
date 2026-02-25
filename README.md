@@ -1,6 +1,10 @@
 # Vulkan Triangle Renderer in C
 
-This repository implements a triangle renderer using Vulkan in C.
+This repository implements a triangle renderer using Vulkan in C, demonstrating low-level graphics pipeline setup and explicit GPU synchronization.
+
+## Preview
+
+![Triangle Screenshot](asserts/screenshot.png)
 
 ## What I implemented in this project:
 
@@ -19,23 +23,23 @@ This repository implements a triangle renderer using Vulkan in C.
 13. Proper cleanup
 
 
-I used https://vulkan-tutorial.com as a reference,
-as well as the official Vulkan documentation:
-https://docs.vulkan.org/
+I used https://vulkan-tutorial.com as a reference, as well as the official Vulkan documentation (https://docs.vulkan.org/).
 
 The implementation is written in C instead of C++.
 
 ## Tools
 
 - gcc
-- Vulkan SDK
+- Vulkan SDK (installed and configured)
 - GLFW
 - C standard libraries
 - glslc (for compiling shaders)
 
 ## Build and Run
 
+```
 git clone https://github.com/abderhman487/VulkanTriangle.git
 cd VulkanTriangle
 make vulkan
 make test
+```
