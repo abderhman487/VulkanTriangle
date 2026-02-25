@@ -6,9 +6,9 @@ LDFLAGS = -lglfw -lvulkan -ldl -lpthread -lX11 -lXxf86vm -lXrandr -lXi
 
 SRC = main.c
 
-TARGET = game
+TARGET = vulkan
 
-game:
+vulkan:
 	$(CC) $(CFLAGS) -o $(TARGET) $(SRC) $(LDFLAGS)
 
 .PHONY: test clean

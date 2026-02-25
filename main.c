@@ -3,14 +3,7 @@
 #include <string.h>
 #include <stdbool.h>
 
-
-
-#define GLFW_INCLUDE_VULKAN
-#include <GLFW/glfw3.h>
-
-typedef uint32_t u32;
-typedef uint8_t u8;
-
+#include "vulkan.h"
 
 const u32 WIN_WIDTH = 800;
 const u32 WIN_HEIGHT = 600;
@@ -24,154 +17,13 @@ const char *deviceExtensions[] = {VK_KHR_SWAPCHAIN_EXTENSION_NAME};
 
 const int MAX_FRAMES_IN_FLIGHT = 2;
 
-
 #ifdef NDEBUG
 const bool enableValidationLayers = false;
 #else
 const bool enableValidationLayers = true;
 #endif
 
-typedef struct SwapChainSupportDetails {
-    VkSurfaceCapabilitiesKHR capabilities;
-    VkSurfaceFormatKHR *formats;
-    VkPresentModeKHR *presentModes;
-    u32 formatCount;
-    u32 presentModeCount;
-} SwapChainSupportDetails;
 
-typedef struct QueueFamilyIndices{
-    u32 graphicsFamily;
-    u32 presentFamily;
-    bool isGraphicsFamilySet;
-    bool isPresentFamilySet;
-} QueueFamilyIndices;
-
-typedef struct App {
-    GLFWwindow *window;
-    VkInstance instance;
-    VkDebugUtilsMessengerEXT debugMessenger;
-    VkSurfaceKHR surface;
-    VkPhysicalDevice physicalDevice;
-    QueueFamilyIndices queueFamilyIndices;
-    VkDevice device; //Logical Device
-    VkQueue graphicsQueue;
-    VkQueue presentQueue;
-    
-    VkSwapchainKHR swapChain;
-    VkImage *swapChainImages;
-    u32 swapChainImageCount;
-    VkFormat swapChainImageFormat;
-    VkExtent2D swapChainExtent;
-
-    VkImageView *swapChainImageViews;
-
-    VkRenderPass renderPass;
-    VkPipelineLayout pipelineLayout;
-    VkPipeline graphicsPipeline;
-
-    VkFramebuffer *swapChainFramebuffers;
-
-    VkCommandPool commandPool;
-    VkCommandBuffer *commandBuffers;
-    u32 commandBufferCount;
-
-    VkSemaphore *imageAvailableSemaphores;
-    VkSemaphore *renderFinishedSemaphores;
-    VkFence *inFlightFences;
-
-    u32 imageAvailableSemaphoreCount;
-    u32 renderFinishedSemaphoreCount;
-    u32 inFlightFenceCount;
-    
-    
-    u32 currentFrame;
-    bool framebufferResized;
-} App;
-
-typedef struct shaderFile{
-    size_t size;
-    char *code;
-} shaderFile;
-
-
-void initWindow(App *pApp);
-void initVulkan(App *pApp);
-void mainloop(App *pApp);
-void cleanup(App *pApp);
-
-void createInstance(App *pApp);
-
-bool checkValidationLayerSupport(void);
-
-VKAPI_ATTR VkBool32 VKAPI_CALL debugCallback(
-    VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
-    VkDebugUtilsMessageTypeFlagsEXT messageType,
-    const VkDebugUtilsMessengerCallbackDataEXT *pCallbackData,
-    void *pUserData
-);
-
-void setupDebugMessenger(App *pApp);
-void populateDebugMessengerCreateInfo(VkDebugUtilsMessengerCreateInfoEXT *createInfo);
-
-VkResult CreateDebugUtilsMessengerEXT(VkInstance instance, 
-    const VkDebugUtilsMessengerCreateInfoEXT *pCreateInfo, 
-    const VkAllocationCallbacks *pAllocator, 
-    VkDebugUtilsMessengerEXT *pDebugMessenger);
-
-void DestroyDebugUtilsMessengerEXT(VkInstance instance, 
-    VkDebugUtilsMessengerEXT debugMessenger, 
-    const VkAllocationCallbacks *pAllocator);
-
-void pickPhysicalDevice(App *pApp);
-
-u32 rateDeviceSuitability(VkPhysicalDevice device, VkSurfaceKHR surface);
-
-QueueFamilyIndices findQueueFamilies(VkPhysicalDevice device, VkSurfaceKHR surface);
-
-void createLogicalDevice(App *pApp);
-
-void createSurface(App *pApp);
-
-bool checkDeviceExtensionSupport(VkPhysicalDevice device);
-
-SwapChainSupportDetails querySwapChainSupport(VkPhysicalDevice device, VkSurfaceKHR surface);
-
-VkSurfaceFormatKHR chooseSwapSurfaceFormat(u32 formatCount, VkSurfaceFormatKHR *availableFormats);
-
-VkPresentModeKHR chooseSwapPresentMode(u32 presentModeCount, VkPresentModeKHR *availablePresentModes);
-
-void createSwapChain(App *pApp);
-
-void createImageViews(App *pApp);
-
-void createGraphicsPipeline(App *pApp);
-
-static shaderFile readFile(char *filename);
-
-VkShaderModule createShaderModule(shaderFile shaderFile, App *pApp);
-
-void createRenderPass(App *pApp);
-
-void createFramebuffers(App *pApp);
-
-void createCommandPool(App *pApp);
-
-void createCommandbuffers(App *pApp);
-
-void recordCommandBuffer(App *pApp, VkCommandBuffer commandBuffer, u32 imageIndex);
-
-void drawFrame(App *pApp);
-
-void createSyncObjects(App *pApp);
-
-void recreateSwapChain(App *pApp);
-
-void cleanupSwapChain(App *pApp);
-
-static void framebufferResizeCallback(GLFWwindow* window, int width, int height);
-
-
-//===================================================================
 int main(void){
     App window = {0};
 
@@ -182,7 +34,6 @@ int main(void){
 
     return 0;
 }
-
 
 void initWindow(App *pApp){
     glfwInit();
@@ -252,13 +103,6 @@ void cleanup(App *pApp){
 
     glfwTerminate();
 }
-
-u8 verifyExtensionsSupport(
-                        u32 glfwExtensionCount,
-                        const char **glfwExtensions,
-                        u32 extensionCount,
-                        VkExtensionProperties *extensions
-                        );
 
 void createInstance(App *pApp){
 
@@ -1293,7 +1137,7 @@ void createSyncObjects(App *pApp) {
 void recreateSwapChain(App *pApp){
 
     int width = 0, height = 0;
-    
+
     glfwGetFramebufferSize(pApp->window, &width, &height);
 
     while (width == 0 || height == 0) {
